@@ -1,5 +1,5 @@
 #![feature(quote, plugin_registrar, rustc_private)]
-
+#![feature(stmt_expr_attributes)]
 extern crate external_mixin_umbrella as emu;
 
 extern crate syntax;
@@ -49,6 +49,9 @@ fn mixin(cx: &mut ExtCtxt, sp: codemap::Span,
     args.push(TARGET.to_string());
     emu::run_mixin_command(cx, sp, NAME, dir, "rustc", &args, Some(&file))
         .map(|o| {
-            emu::Output::Compiled(o, format!("./{}", TARGET))
+            #[cfg(any(windows))]
+            return emu::Output::Compiled(o, format!("{}\\{}\\{}.exe",env::temp_dir().as_path().to_string_lossy(),dir.file_name().unwrap().to_string_lossy(), TARGET));
+            #[cfg(any(not(windows)))]
+            return emu::Output::Compiled(o, format!("./{}", TARGET));
         })
 }
