@@ -6,7 +6,7 @@ extern crate syntax;
 extern crate rustc_plugin;
 
 use std::path::Path;
-
+use std::env;
 use syntax::codemap;
 use syntax::ext::base::ExtCtxt;
 use syntax::parse::token;
