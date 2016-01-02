@@ -1,9 +1,9 @@
 #![feature(quote, plugin_registrar, rustc_private)]
 
-extern crate "external_mixin_umbrella" as emu;
+extern crate external_mixin_umbrella as emu;
 
 extern crate syntax;
-extern crate rustc;
+extern crate rustc_plugin;
 
 use std::path::Path;
 
@@ -11,7 +11,7 @@ use syntax::codemap;
 use syntax::ext::base::ExtCtxt;
 use syntax::parse::token;
 
-use rustc::plugin::Registry;
+use rustc_plugin::Registry;
 
 const NAME: &'static str = "rust_mixin";
 const TARGET: &'static str = "rust_mixin_output_binary";

@@ -1,8 +1,8 @@
 #![feature(quote, plugin_registrar, rustc_private)]
-#![feature(std_misc)]
+
 
 extern crate syntax;
-extern crate rustc;
+extern crate rustc_plugin;
 extern crate tempdir;
 
 use std::collections::HashMap;
@@ -13,11 +13,12 @@ use std::path::{PathBuf, Path};
 use std::process;
 
 use syntax::ast;
+use syntax::ast::TokenTree::Delimited;
 use syntax::codemap;
 use syntax::ext::base::{self, ExtCtxt, MacResult};
 use syntax::fold::Folder;
 use syntax::parse::{self, token};
-use rustc::plugin::Registry;
+use rustc_plugin::Registry;
 
 use tempdir::TempDir;
 
@@ -45,7 +46,7 @@ pub fn run_mixin_command(cx: &ExtCtxt, sp: codemap::Span,
                         plugin_name,
                         binary,
                         if args.len() == 1 { "" } else {"s"},
-                        args.connect("`, `"),
+                        args.join("`, `"),
                         e)
             };
             cx.span_err(sp, &msg);
@@ -132,14 +133,14 @@ fn check_errors_raw(cx: &ExtCtxt,sp: codemap::Span,
             format!("the {} emitted the following on stderr:\n{}",
                     kind, String::from_utf8_lossy(&output.stderr))
         };
-        cx.parse_sess().span_diagnostic.fileline_note(sp, &msg);
+        cx.parse_sess().span_diagnostic.note_without_error(&msg);
         return Err(())
     } else if !output.stderr.is_empty() {
         cx.span_warn(sp, &format!("`{}!`: the {} ran successfully, but had output on stderr",
                                   name, kind));
         let msg = format!("output:\n{}",
                           String::from_utf8_lossy(&output.stderr));
-        cx.parse_sess().span_diagnostic.fileline_note(sp, &msg);
+        cx.parse_sess().span_diagnostic.note_without_error(&msg);
     }
     Ok(())
 }
@@ -173,7 +174,7 @@ impl<F> base::TTMacroExpander for MixinExpander<F>
             }
         }
         let (tts, option_tts): (_, &[_]) = match raw_tts.get(0) {
-            Some(&ast::TtDelimited(_, ref delim)) if delim.delim == token::Brace => {
+            Some(&Delimited(_, ref delim)) if delim.delim == token::Brace => {
                 (&raw_tts[1..], &delim.tts[..])
             }
             _ => (raw_tts, &[])
@@ -194,12 +195,14 @@ impl<F> base::TTMacroExpander for MixinExpander<F>
         let first_line = cx.codemap().lookup_char_pos(lo).line as u64;
 
         let filename = cx.codemap().span_to_filename(sp);
-        let path = PathBuf::new(&filename);
+        let path = PathBuf::from(&filename);
+
         let name = if path.is_absolute() {
             Path::new(path.file_name().unwrap())
         } else {
             &*path
         };
+
         let code_file = self.dir.path().join(name);
 
         mac_try! {
@@ -248,12 +251,31 @@ fn parse_options(cx: &mut ExtCtxt, option_tts: &[ast::TokenTree]) -> Result<Opti
     let mut p = cx.new_parser_from_tts(option_tts);
     while p.token != token::Eof {
         // <name> = "..."
-        let ident = p.parse_ident();
+        let ident = match p.parse_ident(){
+            Ok(i)=>i,
+            Err(mut e)=>{
+                e.emit();
+                panic!()
+            }
+        };
         let ident_span = p.last_span;
-        let key = ident.as_str().to_string();
-        p.expect(&token::Eq);
+        let key = ident.name.as_str().to_string();
 
-        let ret = cx.expander().fold_expr(p.parse_expr());
+        match p.expect(&token::Eq){
+            Ok(())=>(),
+            Err(mut e)=>{
+                e.emit();
+                 panic!()
+             }
+         };
+
+        let ret = cx.expander().fold_expr(match p.parse_expr(){
+            Ok(i)=>i,
+            Err(mut e)=>{
+                e.emit();
+                panic!()
+            }
+        });
         let span = codemap::mk_sp(ident_span.lo, ret.span.hi);
 
         let val_opt = base::expr_to_string(cx, ret, "option must be a string literal")
@@ -261,7 +283,14 @@ fn parse_options(cx: &mut ExtCtxt, option_tts: &[ast::TokenTree]) -> Result<Opti
         let val = match val_opt {
             None => {
                 error_occurred = true;
-                while p.token != token::Comma { p.bump() }
+                while p.token != token::Comma { match p.bump(){
+                    Ok(())=>(),
+                    Err(mut e)=>{
+                        e.emit();
+                        panic!()
+                    }
+                }
+            }
                 continue
             }
             Some(v) => v
@@ -269,12 +298,17 @@ fn parse_options(cx: &mut ExtCtxt, option_tts: &[ast::TokenTree]) -> Result<Opti
 
 
         options.entry(key)
-            .get()
-            .unwrap_or_else(|v| v.insert(vec![]))
+            .or_insert_with(||Vec::<(String, codemap::Span) >::new())
             .push((val, span));
 
         if p.token == token::Eof { break }
-        p.expect(&token::Comma);
+        match p.expect(&token::Comma){
+            Ok(())=>(),
+            Err(mut e)=>{
+                e.emit();
+                panic!()
+            }
+        };
     }
 
     if error_occurred {

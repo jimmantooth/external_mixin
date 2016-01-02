@@ -1,9 +1,9 @@
 #![feature(quote, plugin_registrar, rustc_private)]
 
-extern crate "external_mixin_umbrella" as emu;
+extern crate external_mixin_umbrella as emu;
 
 extern crate syntax;
-extern crate rustc;
+extern crate rustc_plugin;
 
 use std::path::Path;
 
@@ -11,7 +11,7 @@ use syntax::codemap;
 use syntax::ext::base::ExtCtxt;
 use syntax::parse::token;
 
-use rustc::plugin::Registry;
+use rustc_plugin::Registry;
 
 #[plugin_registrar]
 #[doc(hidden)]
@@ -63,7 +63,7 @@ fn mixin(name: &str,
                     } else {
                         cx.span_err(sp, &fmt!("option `interpreter` specified multiple times"));
                         for &(_, span) in interps {
-                            cx.span_note(span, "specified here");
+                            cx.span_err(span, "specified here");
                         }
                         return Err(())
                     }

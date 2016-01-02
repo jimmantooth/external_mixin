@@ -27,7 +27,14 @@ impl<'a> ParserAnyMacro<'a> {
     fn ensure_complete_parse(&self, allow_semi: bool) {
         let mut parser = self.parser.borrow_mut();
         if allow_semi && parser.token == token::Semi {
-            parser.bump()
+            match parser.bump(){
+                Ok(())=> (),
+                Err(mut e)=> {
+                    e.emit();
+
+                }
+            }
+
         }
         if parser.token != token::Eof {
             let token_str = parser.this_token_to_string();
@@ -42,18 +49,33 @@ impl<'a> ParserAnyMacro<'a> {
 
 impl<'a> MacResult for ParserAnyMacro<'a> {
     fn make_expr(self: Box<ParserAnyMacro<'a>>) -> Option<P<ast::Expr>> {
-        let ret = self.parser.borrow_mut().parse_expr();
+        let ret = match  self.parser.borrow_mut().parse_expr(){
+            Ok(expr)=>expr,
+            Err(mut e)=>{
+                e.emit();
+                panic!()
+            }};
         self.ensure_complete_parse(true);
         Some(ret)
     }
     fn make_pat(self: Box<ParserAnyMacro<'a>>) -> Option<P<ast::Pat>> {
-        let ret = self.parser.borrow_mut().parse_pat();
+        let ret = match self.parser.borrow_mut().parse_pat(){
+            Ok(pat)=>pat,
+            Err(mut e)=> {
+                e.emit();
+                panic!()
+            }};
         self.ensure_complete_parse(false);
         Some(ret)
     }
     fn make_items(self: Box<ParserAnyMacro<'a>>) -> Option<SmallVector<P<ast::Item>>> {
         let mut ret = SmallVector::zero();
-        while let Some(item) = self.parser.borrow_mut().parse_item() {
+        while let Some(item) = match self.parser.borrow_mut().parse_item(){
+            Ok(pitem)=>pitem,
+            Err(mut e)=> {
+                e.emit();
+                panic!()
+            }} {
             ret.push(item);
         }
         self.ensure_complete_parse(false);
@@ -67,16 +89,25 @@ impl<'a> MacResult for ParserAnyMacro<'a> {
             let mut parser = self.parser.borrow_mut();
             match parser.token {
                 token::Eof => break,
-                _ => ret.push(parser.parse_impl_item())
+                _ => ret.push(parser.parse_impl_item().unwrap())
             }
         }
         self.ensure_complete_parse(false);
         Some(ret)
     }
 
-    fn make_stmt(self: Box<ParserAnyMacro<'a>>) -> Option<P<ast::Stmt>> {
+    fn make_stmts(self: Box<ParserAnyMacro<'a>>) -> Option<SmallVector<P<ast::Stmt>>> {
         let ret = self.parser.borrow_mut().parse_stmt();
         self.ensure_complete_parse(true);
-        ret
+        match ret{
+            Ok(ss)=> match ss{
+                Some(s)=> Some(SmallVector::one(s)),
+                None => None
+            },
+            Err(_) => {
+               panic!();
+           }
+        }
+
     }
 }
